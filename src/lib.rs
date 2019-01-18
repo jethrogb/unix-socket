@@ -5,7 +5,7 @@
 extern crate libc;
 
 use std::ascii;
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::convert::AsRef;
 use std::ffi::OsStr;
 use std::fmt;
@@ -16,7 +16,9 @@ use std::net::Shutdown;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::{RawFd, AsRawFd, FromRawFd, IntoRawFd};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use libc::c_int;
 
 fn sun_path_offset() -> usize {
     unsafe {
@@ -378,6 +380,84 @@ impl UnixStream {
             }
         }
     }
+
+    /// As `connect`, but time out after a specified duration.
+    pub fn connect_timeout<P: AsRef<Path>>(path: P, timeout: Duration) -> io::Result<UnixStream> {
+        let inner = try!(Inner::new(libc::SOCK_STREAM));
+
+        inner.set_nonblocking(true)?;
+        let r = unsafe {
+            let (addr, len) = try!(sockaddr_un(path));
+            let ret = libc::connect(inner.0, &addr as *const _ as *const _, len);
+            if ret < 0 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        };
+        inner.set_nonblocking(false)?;
+
+        match r {
+            Ok(_) => return Ok(UnixStream { inner: inner }),
+            // there's no ErrorKind for EINPROGRESS :(
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
+            Err(e) => return Err(e),
+        }
+
+        let mut pollfd = libc::pollfd {
+            fd: inner.0,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+
+        if timeout.as_secs() == 0 && timeout.subsec_nanos() == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "cannot set a 0 duration timeout"));
+        }
+
+        let start = Instant::now();
+
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed >= timeout {
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "connection timed out"));
+            }
+
+            let timeout = timeout - elapsed;
+            let mut timeout = timeout.as_secs()
+                .saturating_mul(1_000)
+                .saturating_add(timeout.subsec_nanos() as u64 / 1_000_000);
+            if timeout == 0 {
+                timeout = 1;
+            }
+
+            let timeout = cmp::min(timeout, c_int::max_value() as u64) as c_int;
+
+            match unsafe { libc::poll(&mut pollfd, 1, timeout) } {
+                -1 => {
+                    let err = io::Error::last_os_error();
+                    if err.kind() != io::ErrorKind::Interrupted {
+                        return Err(err);
+                    }
+                }
+                0 => {}
+                _ => {
+                    // linux returns POLLOUT|POLLERR|POLLHUP for refused connections (!), so look
+                    // for POLLHUP rather than read readiness
+                    if pollfd.revents & libc::POLLHUP != 0 {
+                        let e = inner.take_error()?
+                            .unwrap_or_else(|| {
+                                io::Error::new(io::ErrorKind::Other, "no error set after POLLHUP")
+                            });
+                        return Err(e);
+                    }
+
+                    return Ok(UnixStream { inner: inner });
+                }
+            }
+        }
+    }
+
 
     /// Creates an unnamed pair of connected sockets.
     ///
