@@ -1,11 +1,11 @@
 [package]
 name = "unix_socket2"
-version = "0.5.2"
-authors = ["Steven Fackler <sfackler@gmail.com>"]
+version = "0.5.3"
+authors = ["Steven Fackler <sfackler@gmail.com>", "Jethro Beekman <jethro@fortanix.com>"]
 license = "MIT/Apache-2.0"
 description = "Unix domain socket bindings"
-repository = "https://github.com/rust-lang-nursery/unix-socket"
-documentation = "https://doc.rust-lang.org/unix-socket/doc/v0.5.0/unix_socket"
+repository = "https://github.com/jethrogb/unix-socket2"
+documentation = "https://docs.rs/unix-socket2"
 readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
 
