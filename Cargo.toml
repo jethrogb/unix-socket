@@ -1,13 +1,15 @@
 [package]
 name = "unix_socket2"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Steven Fackler <sfackler@gmail.com>", "Jethro Beekman <jethro@fortanix.com>"]
 license = "MIT/Apache-2.0"
-description = "Unix domain socket bindings"
+description = "Unix domain socket bindings, with bug fixes and enhancements."
 repository = "https://github.com/jethrogb/unix-socket2"
 documentation = "https://docs.rs/unix-socket2"
-readme = "README.md"
 keywords = ["posix", "unix", "socket", "domain"]
+
+[lib]
+name = "unix_socket"
 
 [dependencies]
 libc = "0.2.1"
